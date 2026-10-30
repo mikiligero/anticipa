@@ -1,0 +1,23 @@
+name: cercanias
+version: "1.0.0"
+profile: cercanias
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: target
+clean-targets: [target, dbt_packages]
+
+models:
+  cercanias:
+    staging:
+      +materialized: view
+    silver:
+      +materialized: table
+    gold:
+      # Materialización externa de dbt-duckdb: cada modelo se escribe como
+      # Parquet en /data/gold/<modelo>.parquet (lo consumen API, dashboard,
+      # streaming y ML sin tocar el warehouse).
+      +materialized: external
+      +format: parquet

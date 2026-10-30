@@ -1,0 +1,21 @@
+.mapa-panel { margin: 0 0 24px; padding: 22px; }
+.mapa-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.mapa-cabecera h2 { font-size: 1.2rem; margin: 0 0 5px; }
+.mapa-cabecera p, .mapa-nota { color: var(--ink-2); font-size: .85rem; margin: 6px 0 0; }
+.mapa-controles { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.mapa-controles label { font-size: .88rem; font-weight: 700; }
+.mapa-controles select { margin-left: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; color: var(--ink); }
+.mapa-contenedor { height: 400px; border-radius: 14px; isolation: isolate; background: #f5f5f5; }
+.mapa-leyenda { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 14px; font-size: .8rem; color: var(--ink-2); }
+.mapa-leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+.mapa-leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.mapa-leyenda .mapa-trazado { width: 20px; height: 3px; border-radius: 0; background: var(--magenta); }
+.mapa-leyenda .mapa-estacion { background: #fff; border: 1px solid #475569; }
+.mapa-ampliado { position: fixed; inset: 12px; z-index: 3000; display: flex; flex-direction: column; margin: 0; overflow-y: auto; box-shadow: 0 0 0 30px #17181c80; }
+.mapa-ampliado .mapa-contenedor { flex: 1; min-height: 250px; }
+@media (max-width: 700px) { .mapa-panel { padding: 14px; } .mapa-contenedor { height: 340px; } .mapa-ampliado { inset: 4px; } }
+
+/* Solo el fondo cartográfico: los trazados y marcadores conservan su color. */
+.mapa-contenedor .leaflet-tile-pane { filter: grayscale(1) brightness(1.08) contrast(.8); }
+
+.mapa-plegado .mapa-cabecera { margin-bottom: 0; }

@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Capa Bronze: Parquet particionado Hive por fecha, escrito por el
+      ingestor (o importado del histórico del servidor). Inmutable.
+    meta:
+      external_location: "read_parquet('{{ env_var('DATA_ROOT', '/data') }}/bronze/{name}/date=*/*.parquet', hive_partitioning=true, union_by_name=true)"
+    tables:
+      - name: trip_updates
+      - name: vehicle_positions
+      - name: alerts
+
+  - name: gtfs
+    description: >
+      GTFS estático versionado: cada descarga semanal se conserva bajo
+      version=YYYY-MM-DD (requisito de la reconciliación H12').
+    meta:
+      external_location: "read_parquet('{{ env_var('DATA_ROOT', '/data') }}/gtfs_static/version=*/{name}.parquet', hive_partitioning=true, union_by_name=true)"
+    tables:
+      - name: trips
+      - name: routes
+      - name: stops
+      - name: calendar
+      - name: stop_times

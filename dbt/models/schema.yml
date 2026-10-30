@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_trip_updates
+    description: Trip updates normalizados (H12') y filtrados al rango del EDA.
+    columns:
+      - name: trip_id
+        tests: [not_null]
+      - name: arrival_delay_min
+        tests: [not_null]
+
+  - name: reconciliacion_viajes
+    description: Reconciliación RT ↔ GTFS estático (H12', K3 ≥ 95%).
+    columns:
+      - name: trip_id
+        tests: [not_null]
+
+  - name: llegadas_consumadas
+    description: Retraso final aproximado por viaje y día.
+    tests:
+      - unique_combination:
+          combination: [fecha, trip_id]
+    columns:
+      - name: retraso_final_min
+        tests: [not_null]
+
+  - name: kpi_cobertura
+    columns:
+      - name: cobertura_pct
+        tests: [not_null]
+
+  - name: features_modelo
+    columns:
+      - name: target_retraso_final_min
+        tests: [not_null]

@@ -1,0 +1,180 @@
+name: tfm-anticipa
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+x-data: &data "./data:/data"
+x-token: &token ${API_TOKEN:?Ejecuta python3 scripts/init_project.py}
+x-airflow-env: &airflow-env
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/${POSTGRES_DB:-airflow}
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Madrid
+  AEMET_API_KEY: ${AEMET_API_KEY:-}
+  AEMET_MUNICIPIO: ${AEMET_MUNICIPIO:-28079}
+
+services:
+  kafka:
+    image: apache/kafka:3.8.1
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes: ["kafka_data:/var/lib/kafka/data"]
+    healthcheck:
+      test: [CMD-SHELL, "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  ingestor:
+    build: ./services/ingestor
+    labels: {autoheal: "true"}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      DATA_ROOT: /data
+      POLL_SECONDS: ${POLL_SECONDS:-30}
+      KAFKA_BOOTSTRAP: kafka:9092
+    volumes: [*data]
+
+  stream:
+    build: ./services/stream
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      kafka: {condition: service_healthy}
+    environment:
+      DATA_ROOT: /data
+      KAFKA_BOOTSTRAP: kafka:9092
+      TRIGGER: "30 seconds"
+    volumes: [*data]
+
+  api:
+    build: ./services/api
+    labels: {autoheal: "true"}
+    restart: unless-stopped
+    logging: *logging
+    ports: ["${API_BIND:-127.0.0.1}:${API_PORT:-18000}:8000"]
+    environment:
+      DATA_ROOT: /data
+      API_TOKEN: *token
+      ALERT_CONFIDENCE_THRESHOLD: ${ALERT_CONFIDENCE_THRESHOLD:-0.90}
+    volumes: [*data]
+
+  webapp:
+    build: ./services/webapp
+    labels: {autoheal: "true"}
+    restart: unless-stopped
+    logging: *logging
+    ports: ["${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3000}:80"]
+    environment: {API_TOKEN: *token}
+    depends_on: [api]
+    volumes: ["./.secrets/operator.htpasswd:/etc/nginx/operator.htpasswd:ro"]
+
+  dashboard:
+    build: ./services/dashboard
+    labels: {autoheal: "true"}
+    restart: unless-stopped
+    logging: *logging
+    ports: ["${DASHBOARD_BIND:-0.0.0.0}:${DASHBOARD_PORT:-18501}:8501"]
+    environment:
+      DATA_ROOT: /data
+      API_URL: http://api:8000
+      API_TOKEN: *token
+    volumes: [*data]
+
+  dbt:
+    build: ./dbt
+    profiles: [tools]
+    environment:
+      DATA_ROOT: /data
+      DUCKDB_PATH: /data/warehouse/cercanias.duckdb
+      GOLD_ROOT: /data/gold
+    volumes: ["./dbt:/opt/dbt", *data]
+
+  tools:
+    build: ./dbt
+    profiles: [tools]
+    entrypoint: []
+    command: [bash]
+    environment:
+      DATA_ROOT: /data
+      AEMET_API_KEY: ${AEMET_API_KEY:-}
+      AEMET_MUNICIPIO: ${AEMET_MUNICIPIO:-28079}
+    volumes: ["./scripts:/opt/scripts:ro", "./dbt:/opt/dbt", *data]
+
+  ml:
+    build: ./services/ml
+    profiles: [ml]
+    environment:
+      DATA_ROOT: /data
+      ALERT_DELAY_MINUTES: ${ALERT_DELAY_MINUTES:-10}
+      TRAIN_MAX_ROWS: ${TRAIN_MAX_ROWS:-1500000}
+    volumes: [*data]
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: [orchestration]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: ${POSTGRES_DB:-airflow}
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ${POSTGRES_USER:-airflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  airflow:
+    build: ./airflow
+    profiles: [orchestration]
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+    ports: ["127.0.0.1:${AIRFLOW_PORT:-18080}:8080"]
+    environment: *airflow-env
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - ./dbt:/opt/dbt
+      - ./scripts:/opt/scripts:ro
+      - ./services/ml/app:/opt/ml:ro
+      - *data
+    command:
+      - bash
+      - -ec
+      - |
+        airflow db migrate
+        airflow users create --username ${AIRFLOW_ADMIN_USER:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} --firstname Admin --lastname Cercanias --role Admin --email admin@example.com || true
+        airflow scheduler &
+        scheduler_pid=$$!
+        airflow webserver &
+        web_pid=$$!
+        trap 'kill $$scheduler_pid $$web_pid 2>/dev/null || true' EXIT INT TERM
+        wait -n $$scheduler_pid $$web_pid
+
+  autoheal:
+    image: willfarrell/autoheal:latest
+    profiles: [maintenance]
+    restart: unless-stopped
+    environment: {AUTOHEAL_CONTAINER_LABEL: autoheal}
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+
+volumes:
+  kafka_data:
+  postgres_data:

@@ -1,0 +1,18 @@
+.tendencias { margin-top: 28px; }
+.tendencias-cabecera { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 16px; }
+.tendencias-cabecera h2 { margin: 0; font-size: 1.25rem; }
+.tendencias-cabecera span, .tendencias-nota { font-size: .85rem; color: var(--ink-2); }
+.tendencias-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.tendencia-card { min-width: 0; margin-bottom: 0; padding: 22px; }
+.tendencia-card h3 { font-size: 1.08rem; margin: 0 0 6px; }
+.tendencia-descripcion { margin: 0 0 14px; color: var(--ink-2); font-size: .85rem; }
+.tendencia-svg { width: 100%; height: auto; display: block; min-height: 190px; }
+.tendencia-svg text { font: 12px system-ui; fill: #6b7280; }
+.tendencia-svg rect:focus { outline: 2px solid var(--magenta); outline-offset: -2px; }
+.tendencia-leyenda { display: flex; flex-wrap: wrap; gap: 16px; font-size: .8rem; color: var(--ink-2); margin: 6px 0 14px; }
+.tendencia-leyenda span { display: inline-flex; gap: 6px; align-items: center; }
+.tendencia-leyenda i { width: 22px; border-top-width: 3px; }
+.tendencia-detalle { display: flex; flex-wrap: wrap; gap: 6px 16px; background: #f6f6f8; padding: 12px; border-radius: 10px; font-size: .8rem; color: var(--ink-2); min-height: 65px; }
+.tendencia-detalle > b { width: 100%; color: var(--ink); }
+.tendencia-vacia { min-height: 240px; display: grid; place-items: center; color: var(--ink-2); text-align: center; padding: 20px; }
+@media(max-width: 1000px) { .tendencias-grid { grid-template-columns: 1fr; } }

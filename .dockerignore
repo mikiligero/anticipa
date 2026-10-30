@@ -1,0 +1,13 @@
+data
+.secrets
+.env
+.env.*
+.git
+.claude
+.codex
+**/node_modules
+**/dist
+**/__pycache__
+**/._*
+*.tgz
+*.gz

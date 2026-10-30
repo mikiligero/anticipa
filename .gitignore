@@ -1,0 +1,47 @@
+# Datos, credenciales y configuración privada (se conservan fuera del repositorio).
+data/
+.env
+.env.*
+!.env.example
+.secrets/
+*.htpasswd
+compose.server.json
+deploy/lxc/access.txt
+*.tgz
+*.tar
+*.tar.gz
+*.gz
+*.zip
+*.log
+*.sqlite
+*.sqlite3
+*.duckdb
+
+# Dependencias y artefactos regenerables.
+node_modules/
+dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+airflow/logs/
+airflow/*.pid
+airflow/airflow.db
+
+# Configuración personal y metadatos del sistema.
+.claude/
+.codex/
+.DS_Store
+._*
+.idea/
+.vscode/
+
+# Validación de un arranque vacío
+.validation/

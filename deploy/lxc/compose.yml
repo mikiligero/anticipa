@@ -1,0 +1,14 @@
+# Límites de la demo compartida. No contiene rutas absolutas ni credenciales.
+services:
+  kafka: {mem_limit: 1024m, cpus: 1}
+  ingestor: {mem_limit: 256m, cpus: 0.5}
+  stream:
+    mem_limit: 2048m
+    cpus: 2
+    environment: {PYSPARK_SUBMIT_ARGS: "--driver-memory 768m pyspark-shell"}
+  api: {mem_limit: 768m, cpus: 1}
+  webapp: {mem_limit: 128m, cpus: 0.5}
+  dashboard: {mem_limit: 512m, cpus: 0.5}
+  dbt: {mem_limit: 1536m, cpus: 1}
+  tools: {mem_limit: 1536m, cpus: 1}
+  ml: {mem_limit: 2048m, cpus: 1}

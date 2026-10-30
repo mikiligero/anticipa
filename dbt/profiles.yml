@@ -1,0 +1,17 @@
+cercanias:
+  target: prod
+  outputs:
+    prod:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', '/data/warehouse/cercanias.duckdb') }}"
+      # 1 hilo: la VM de Docker comparte ~4 GB con Kafka/Spark/Airflow y dos
+      # modelos pesados en paralelo agotan la memoria del host
+      threads: 1
+      external_root: "{{ env_var('GOLD_ROOT', '/data/gold') }}"
+      settings:
+        # Contenedores con poca RAM (VM de Docker): límite explícito y
+        # spill a disco para las agregaciones sobre el histórico completo
+        memory_limit: "1GB"
+        temp_directory: "/data/warehouse/tmp"
+        max_temp_directory_size: "20GB"
+        preserve_insertion_order: false

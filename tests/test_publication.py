@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 class PublicationTests(unittest.TestCase):
     def test_generated_files_and_credentials_are_ignored(self):
         private=['.env','.env.production','.secrets/access.txt','.secrets/operator.htpasswd','deploy/lxc/access.txt','bronze.gz','deploy/lxc/demo-handoff.tgz','data/bronze/test.parquet','.claude/settings.json','services/webapp/node_modules/a.js','services/webapp/dist/index.html','services/api/app/__pycache__/a.pyc','dbt/target/manifest.json','dbt/.user.yml','compose.server.json']
-        public=['.env.example','docker-compose.yml','deploy/lxc/compose.yml','services/webapp/package-lock.json','services/api/app/inferencia.py','scripts/prepare_map.py','tests/test_setup.py']
+        public=['.env.example','docker-compose.yml','deploy/lxc/compose.yml','services/webapp/package-lock.json','services/api/app/main.py','scripts/prepare_map.py','tests/test_setup.py']
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(['git','init','-q',tmp],check=True)
             r=subprocess.run(['git',f'--git-dir={tmp}/.git',f'--work-tree={ROOT}','check-ignore','--no-index','--stdin'],input='\n'.join(private+public)+'\n',text=True,capture_output=True,cwd=ROOT)

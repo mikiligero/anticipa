@@ -22,5 +22,4 @@ sources:
       - name: trips
       - name: routes
       - name: stops
-      - name: calendar
       - name: stop_times

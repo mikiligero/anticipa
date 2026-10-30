@@ -1,5 +1,5 @@
 COMPOSE ?= docker compose
-.PHONY: init up down logs ps config gtfs nucleos mapa bootstrap dbt dbt-test train airflow aemet import-historico
+.PHONY: init up down logs ps config gtfs nucleos mapa bootstrap dbt dbt-test
 init:
 	python3 scripts/init_project.py
 config:
@@ -19,17 +19,9 @@ dbt:
 	$(COMPOSE) run --rm dbt build
 dbt-test:
 	$(COMPOSE) run --rm dbt test
-train:
-	$(COMPOSE) --profile ml run --rm ml
-airflow:
-	$(COMPOSE) --profile orchestration up -d --build postgres airflow
-aemet:
-	$(COMPOSE) run --rm tools python /opt/scripts/ingest_aemet.py
-import-historico:
-	./scripts/import_bronze.sh $(HOST) $(REMOTE_ROOT)
 ps:
 	$(COMPOSE) ps
 logs:
 	$(COMPOSE) logs -f --tail=100
 down:
-	$(COMPOSE) --profile orchestration --profile ml --profile maintenance down
+	$(COMPOSE) down

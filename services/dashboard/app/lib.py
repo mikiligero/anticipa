@@ -10,8 +10,6 @@ import streamlit as st
 
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", "/data"))
 GOLD = DATA_ROOT / "gold"
-API_URL = os.environ.get("API_URL", "http://api:8000")
-API_TOKEN = os.environ["API_TOKEN"]
 
 # Paleta categórica validada (orden fijo — la asignación sigue a la entidad)
 CATEGORICAL = ["#2a78d6", "#1baf7a", "#eda100", "#008300",

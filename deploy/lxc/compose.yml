@@ -11,4 +11,3 @@ services:
   dashboard: {mem_limit: 512m, cpus: 0.5}
   dbt: {mem_limit: 1536m, cpus: 1}
   tools: {mem_limit: 1536m, cpus: 1}
-  ml: {mem_limit: 2048m, cpus: 1}

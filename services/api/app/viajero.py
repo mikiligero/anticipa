@@ -19,7 +19,6 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
 import main as core
-from inferencia import predecir
 
 router = APIRouter(prefix="/app", tags=["viajero"])
 
@@ -126,17 +125,6 @@ def _nucleos() -> dict[str, set[str]]:
         return out
 
     return CACHE.get("nucleos", build)
-
-
-def _nucleo_de_stop(stop_id) -> str | None:
-    """Núcleo al que pertenece una estación (lookup inverso del catálogo)."""
-    if not stop_id:
-        return None
-    s = _norm_stop(stop_id)
-    for nucleo, stops in _nucleos().items():
-        if s in stops:
-            return nucleo
-    return None
 
 
 def _filtra_nucleo(df: pd.DataFrame, nucleo: str | None) -> pd.DataFrame:
@@ -319,29 +307,6 @@ def proximos(
 
 
 
-def _itinerario(trip_id: str) -> list[dict]:
-    """Recorrido ordenado del viaje según stop_times (GTFS estático)."""
-    p = core.GOLD / "dim_itinerarios.parquet"
-    if not p.exists():
-        return []
-    tid = str(trip_id).replace("'", "''")
-    df = core.query_df(
-        f"select stop_sequence, stop_id, stop_name, hora_prog from read_parquet('{p}') "
-        f"where trip_id = '{tid}' order by stop_sequence"
-    )
-    return df.to_dict("records")
-
-
-def _hora_mas_min(hhmmss, minutos: float) -> str | None:
-    """'HH:MM:SS' del GTFS (admite >24h) + minutos → 'HH:MM' local."""
-    try:
-        h, m, *_ = (int(x) for x in str(hhmmss).strip().split(":"))
-    except (ValueError, AttributeError):
-        return None
-    total = h * 60 + m + round(minutos)
-    return f"{(total // 60) % 24:02d}:{total % 60:02d}"
-
-
 def _destino(r) -> str | None:
     """Destino del tren: última parada del viaje (stop_times); headsign como fallback."""
     for campo in ("destino", "trip_headsign"):
@@ -349,10 +314,6 @@ def _destino(r) -> str | None:
         if isinstance(v, str) and v.strip():
             return v.strip()
     return None
-
-def _predecir(df: pd.DataFrame) -> pd.DataFrame | None:
-    return predecir(df, core.MODELS)
-
 
 def _coords_estaciones() -> dict[str, tuple[float, float]]:
     """stop_id → (lat, lon) desde dim_estaciones (con y sin ceros a la izq.)."""
@@ -441,18 +402,16 @@ def _estaciones_de_linea(df_linea: pd.DataFrame, inicio_stop_id: str | None = No
 
 @router.get("/linea/{linea}")
 def linea_detalle(linea: str, nucleo: str | None = Query(default=None)) -> dict:
-    """Dashboard de línea: semáforo, trenes en vía, estaciones y predicción."""
+    """Dashboard de línea: semáforo, trenes en vía y estaciones."""
     df = _filtra_nucleo(_estado(), nucleo)
     df = df[df["linea"] == linea] if not df.empty and "linea" in df.columns else pd.DataFrame()
     if df.empty:
         raise HTTPException(status_code=404, detail=f"Sin trenes de {linea} en circulación ahora")
 
     media = float(df["arrival_delay_min"].mean())
-    scored = _predecir(df)
 
     trenes = []
-    fuente = scored if scored is not None else df
-    for _, r in fuente.sort_values("arrival_delay_min", ascending=False).iterrows():
+    for _, r in df.sort_values("arrival_delay_min", ascending=False).iterrows():
         trenes.append(
             {
                 "trip_id": r["trip_id"],
@@ -461,23 +420,8 @@ def linea_detalle(linea: str, nucleo: str | None = Query(default=None)) -> dict:
                 "llegada": _hhmm(r.get("arrival_time")),
                 "retraso_min": None if pd.isna(r["arrival_delay_min"]) else float(r["arrival_delay_min"]),
                 "nivel": nivel_de(r["arrival_delay_min"]),
-                "retraso_final_previsto_min": float(r["retraso_final_min"]) if scored is not None else None,
-                "alerta": bool(r["prob_grave"] >= core.ALERT_CONFIDENCE) if scored is not None else False,
             }
         )
-
-    prediccion = None
-    if scored is not None:
-        n_alertas = int((scored["prob_grave"] >= core.ALERT_CONFIDENCE).sum())
-        max_pred = float(scored["retraso_final_min"].max())
-        prediccion = {
-            "retraso_final_medio_min": round(float(scored["retraso_final_min"].mean()), 1),
-            "retraso_final_max_min": round(max_pred, 1),
-            "prob_max": round(float(scored["prob_grave"].max()), 3),
-            "n_alertas": n_alertas,
-            "nivel_previsto": nivel_de(float(scored["retraso_final_min"].mean())),
-            "mae_min": core.MODELS.meta.get("mae_min"),
-        }
 
     nombre = _nombres_lineas(nucleo).get(linea, f"Línea {linea}")
 
@@ -490,7 +434,6 @@ def linea_detalle(linea: str, nucleo: str | None = Query(default=None)) -> dict:
         "retraso_max_min": round(float(df["arrival_delay_min"].max()), 1),
         "puntualidad_pct": round(float((df["arrival_delay_min"] < 5).mean() * 100)),
         "trenes_activos": int(len(df)),
-        "prediccion": prediccion,
         "trenes": trenes,
         "estaciones": _estaciones_de_linea(df),
     }
@@ -498,7 +441,7 @@ def linea_detalle(linea: str, nucleo: str | None = Query(default=None)) -> dict:
 
 @router.get("/tren/{trip_id}")
 def tren(trip_id: str) -> dict:
-    """Detalle en vivo de un tren + predicción del modelo (si hay modelo)."""
+    """Detalle de un tren con los datos actuales publicados por Renfe."""
     df = _estado()
     fila = df[df["trip_id"] == trip_id] if not df.empty else pd.DataFrame()
     if fila.empty:
@@ -517,88 +460,4 @@ def tren(trip_id: str) -> dict:
         "actualizado": r.get("updated_at"),
     }
 
-    prediccion = None
-    proximas = []
-    scored = _predecir(fila)
-    if scored is not None:
-        s = scored.iloc[0]
-        pred = float(s["retraso_final_min"])
-        prob_grave = float(s["prob_grave"])
-        certeza = max(prob_grave, 1 - prob_grave)
-        prediccion = {
-            "retraso_final_min": round(pred, 1),
-            "prob_llegar_bien": round((1 - prob_grave) * 100),
-            "umbral_grave_min": core.MODELS.meta.get("alert_delay_min"),
-            "confianza": "alta" if certeza >= 0.8 else "media" if certeza >= 0.6 else "baja",
-            "nivel_previsto": nivel_de(pred),
-            "alerta": prob_grave >= core.ALERT_CONFIDENCE,
-            "modelo": {
-                "mae_min": core.MODELS.meta.get("mae_min"),
-                "n_train": core.MODELS.meta.get("n_train"),
-                "entrenado": core.MODELS.meta.get("trained_at"),
-            },
-        }
-
-        # Próximas estaciones con retraso previsto interpolado entre el
-        # retraso actual y la predicción final del modelo.
-        # Fuente preferente: el ITINERARIO REAL del viaje (stop_times) — las
-        # estaciones que le quedan al tren tras su próxima parada, en orden.
-        fuente = None
-        restantes: list[dict] = []
-        if not pd.isna(r["arrival_delay_min"]):
-            itin = _itinerario(trip_id)
-            en_itinerario = False
-            if itin:
-                ids = [_norm_stop(x["stop_id"]) for x in itin]
-                actual_id = _norm_stop(r.get("stop_id"))
-                if actual_id in ids:
-                    en_itinerario = True
-                    idx = ids.index(actual_id)
-                    restantes = [
-                        {"nombre": x["stop_name"] or x["stop_id"], "hora_prog": x.get("hora_prog")}
-                        for x in itin[idx + 1:]
-                    ]
-                    # sin restantes = la próxima parada ES la terminal: no hay
-                    # nada que listar (y el fallback mostraría estaciones ya
-                    # recorridas — no debe activarse)
-                    fuente = "itinerario" if restantes else "terminal"
-
-            if not en_itinerario and not restantes and r.get("linea"):
-                # Fallback (viajes de versiones GTFS antiguas): corredor
-                # geográfico de la línea en el núcleo del tren
-                misma_linea = df[df["linea"] == r["linea"]]
-                nuc = _nucleo_de_stop(r.get("stop_id"))
-                if nuc:
-                    misma_linea = _filtra_nucleo(misma_linea, nuc)
-                estaciones = _estaciones_de_linea(misma_linea, inicio_stop_id=r.get("stop_id"))
-                restantes = [
-                    {"nombre": e["nombre"]} for e in estaciones if e["stop_id"] != r.get("stop_id")
-                ][:8]
-                fuente = "aproximado" if restantes else None
-
-            if restantes:
-                if len(restantes) > 12:
-                    # si hay que recortar, la terminal se conserva siempre
-                    restantes = restantes[:11] + [restantes[-1]]
-                actual = float(r["arrival_delay_min"])
-                for i, e in enumerate(restantes):
-                    t = (i + 1) / len(restantes)
-                    previsto = actual + (pred - actual) * t
-                    hora_prog = e.get("hora_prog")
-                    proximas.append(
-                        {
-                            "nombre": e["nombre"],
-                            "retraso_previsto_min": round(previsto, 1),
-                            "nivel": nivel_de(previsto),
-                            # hora planificada (GTFS) y prevista (planificada + retraso)
-                            "hora_prog": _hora_mas_min(hora_prog, 0) if hora_prog else None,
-                            "hora_prevista": _hora_mas_min(hora_prog, previsto) if hora_prog else None,
-                        }
-                    )
-
-    return {
-        "tren": detalle,
-        "prediccion": prediccion,
-        "proximas_estaciones": proximas,
-        "proximas_fuente": fuente if prediccion else None,
-    }
+    return {"tren": detalle}

@@ -25,7 +25,6 @@ export const api = {
   tendencias: (nucleo, signal) => getOpJSON(`/tendencias${q({ nucleo })}`, signal),
   mapaRed: (nucleo, signal) => getOpJSON(`/mapa/red${q({ nucleo })}`, signal),
   mapaTrenes: (nucleo, signal) => getOpJSON(`/mapa/trenes${q({ nucleo })}`, signal),
-  prediccionRed: (nucleo) => getOpJSON(`/prediccion${q({ nucleo })}`),
   nucleos: () => getJSON("/nucleos"),
   resumen: (nucleo) => getJSON(`/resumen${q({ nucleo })}`),
   lineas: (nucleo) => getJSON(`/lineas${q({ nucleo })}`),

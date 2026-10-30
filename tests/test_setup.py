@@ -15,7 +15,7 @@ class SetupTests(unittest.TestCase):
     def test_credentials_are_not_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
-            (root/'.env.example').write_text('API_TOKEN=\nOPERATOR_USER=operador\nPOSTGRES_PASSWORD=\nAIRFLOW_ADMIN_PASSWORD=\n')
+            (root/'.env.example').write_text('API_TOKEN=\nOPERATOR_USER=operador\n')
             with patch('builtins.print'):
                 initialize(root)
                 before={p.name:p.read_bytes() for p in [root/'.env',root/'.secrets/access.txt',root/'.secrets/operator.htpasswd']}

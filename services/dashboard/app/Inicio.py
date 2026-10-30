@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import pandas as pd
-import requests
 import streamlit as st
 
-from lib import API_TOKEN, API_URL, DATA_ROOT, fmt_min
+from lib import DATA_ROOT, fmt_min
 
 st.set_page_config(page_title="Cercanías — Tiempo real", page_icon="🚆", layout="wide")
 
@@ -64,24 +63,3 @@ with col_tabla:
         top.rename(columns={"arrival_delay_min": "retraso (min)", "stop_name": "próxima parada"}),
         use_container_width=True, hide_index=True,
     )
-
-# ── Alertas del modelo predictivo ────────────────────────────────────────
-st.subheader("⚠️ Alertas predictivas")
-st.caption("Solo se emite alerta con confianza ≥ 90% (K7 — minimizar falsos positivos).")
-try:
-    r = requests.get(f"{API_URL}/prediccion", headers={"X-API-Key": API_TOKEN}, timeout=10)
-    if r.status_code == 503:
-        st.info("No hay un modelo publicado. Las predicciones estarán disponibles tras entrenar el modelo.")
-    else:
-        r.raise_for_status()
-        data = r.json()
-        alertas = pd.DataFrame(data["alertas"])
-        if alertas.empty:
-            st.success("Sin alertas activas: no se prevén retrasos graves con confianza suficiente.")
-        else:
-            st.error(f"{len(alertas)} viajes con retraso grave previsto")
-            st.dataframe(alertas, use_container_width=True, hide_index=True)
-        meta = data.get("modelo", {})
-        st.caption(f"Modelo: MAE {meta.get('mae_min')} min · ±2 min: {meta.get('pct_dentro_2min')}% · entrenado {meta.get('trained_at')}")
-except requests.RequestException as exc:
-    st.warning(f"API no disponible ({exc}).")

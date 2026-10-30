@@ -1,12 +1,7 @@
 """API de servicios de la Plataforma de Monitorización de Cercanías.
 
-Endpoints (Sprint 2, apartado 4.3):
-  /salud       — estado de la ingesta y de la plataforma (sin token)
-  /estado      — estado de la red en tiempo real (ruta caliente)
-  /posiciones  — última posición de cada tren
-  /kpis/{tabla} — KPIs Gold (K1-K12)
-  /prediccion  — retraso final previsto por viaje + alertas emitidas
-                 (solo con confianza ≥ ALERT_CONFIDENCE_THRESHOLD, K7)
+Endpoints de la demo: salud, estado en vivo, posiciones, indicadores,
+viajero, mapa y tendencias. Las predicciones son ejemplos de la interfaz.
 
 Autenticación por token (cabecera X-API-Key), RBAC simplificado del piloto.
 """
@@ -19,18 +14,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
-import joblib
 import pandas as pd
-from inferencia import predecir
 from fastapi import Depends, FastAPI, HTTPException, Query, Security
 from fastapi.security import APIKeyHeader
 
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", "/data"))
 GOLD = DATA_ROOT / "gold"
 REALTIME = GOLD / "realtime"
-PROD_MODELS = DATA_ROOT / "models" / "prod"
 API_TOKEN = os.environ["API_TOKEN"]
-ALERT_CONFIDENCE = float(os.environ.get("ALERT_CONFIDENCE_THRESHOLD", "0.90"))
 
 KPI_TABLES = {
     "ingesta": "kpi_ingesta.parquet",
@@ -83,30 +74,6 @@ def _clean_records(df: pd.DataFrame) -> list[dict]:
     return json.loads(df.to_json(orient="records", date_format="iso"))
 
 
-# ── Modelo (recarga perezosa si cambia prod/metrics.json) ────────────────
-class ModelBundle:
-    def __init__(self):
-        self._mtime = 0.0
-        self.reg = None
-        self.clf = None
-        self.meta: dict = {}
-
-    def load(self) -> bool:
-        metrics = PROD_MODELS / "metrics.json"
-        if not metrics.exists():
-            return False
-        mtime = metrics.stat().st_mtime
-        if mtime != self._mtime:
-            self.meta = json.loads(metrics.read_text())
-            self.reg = joblib.load(PROD_MODELS / "model_regresion.joblib")
-            self.clf = joblib.load(PROD_MODELS / "model_alerta.joblib")
-            self._mtime = mtime
-        return True
-
-
-MODELS = ModelBundle()
-
-
 def _snapshot_epoch(path: Path) -> int:
     """Epoch del snapshot desde el nombre del fichero Bronze.
 
@@ -147,7 +114,6 @@ def salud() -> dict:
         "hora": datetime.now(timezone.utc).isoformat(),
         "ingesta": feeds,
         "ruta_caliente_ok": estado.exists() and now - estado.stat().st_mtime < 120,
-        "modelo_prod": (PROD_MODELS / "metrics.json").exists(),
     }
 
 
@@ -180,39 +146,6 @@ def kpis(tabla: str, fecha: str | None = Query(default=None)) -> list[dict]:
     if fecha and "fecha" in df.columns:
         df = df[df["fecha"].astype(str) == fecha]
     return _clean_records(df)
-
-
-@app.get("/prediccion", dependencies=[Depends(require_token)])
-def prediccion(nucleo: str | None = Query(default=None)) -> dict:
-    """Predicción de retraso final por viaje activo + alertas emitidas.
-
-    Solo se emite alerta si P(retraso ≥ umbral) ≥ ALERT_CONFIDENCE_THRESHOLD
-    (calibración de la matriz de consecuencias: minimizar falsos positivos).
-    """
-    if not MODELS.load():
-        raise HTTPException(status_code=503, detail="No hay modelo en producción: entrena primero (servicio ml)")
-    df = _read_parquet(REALTIME / "estado_red.parquet")
-    if nucleo:
-        from viajero import _filtra_nucleo  # import tardío: evita ciclo al cargar el módulo
-
-        df = _filtra_nucleo(df, nucleo)
-    if df.empty:
-        return {"predicciones": [], "alertas": []}
-
-    scored = predecir(df, MODELS)
-    out = scored[[c for c in ("trip_id", "linea", "stop_id", "stop_name", "arrival_delay_min") if c in scored]].copy()
-    out["retraso_final_previsto_min"] = scored["retraso_final_min"]
-    out["prob_retraso_grave"] = scored["prob_grave"]
-    proba = scored["prob_grave"]
-    out["alerta"] = proba >= ALERT_CONFIDENCE
-
-    alertas = out[out["alerta"]].sort_values("prob_retraso_grave", ascending=False)
-    return {
-        "modelo": {k: MODELS.meta.get(k) for k in ("trained_at", "mae_min", "pct_dentro_2min")},
-        "umbral_confianza": ALERT_CONFIDENCE,
-        "predicciones": _clean_records(out),
-        "alertas": _clean_records(alertas),
-    }
 
 
 # ── Endpoints públicos de viajero (webapp) ───────────────────────────────

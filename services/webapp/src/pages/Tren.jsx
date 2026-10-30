@@ -26,9 +26,8 @@ export default function Tren({ tripId, onBack }) {
     );
   if (!data) return <Vacio emoji="⏳">Cargando tren…</Vacio>;
 
-  const { tren, prediccion: prediccionReal, proximas_estaciones: proximas = [], proximas_fuente: fuente } = data;
-  const simulada = !prediccionReal;
-  const prediccion = prediccionReal || PREDICCION_VIAJERO;
+  const { tren } = data;
+  const prediccion = PREDICCION_VIAJERO;
 
 
   return (
@@ -67,7 +66,7 @@ export default function Tren({ tripId, onBack }) {
           <div className="pred-hero">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontWeight: 800 }}>Predicción del modelo</span>
-              <span className="mini">{simulada ? "EJEMPLO SIMULADO" : "GTFS-RT + histórico propio"}</span>
+              <span className="mini">EJEMPLO SIMULADO</span>
             </div>
             <div className="pct">{prediccion.prob_llegar_bien}%</div>
             <div style={{ opacity: 0.9 }}>prob. de terminar sin retraso grave (&lt; {prediccion.umbral_grave_min} min)</div>
@@ -83,66 +82,20 @@ export default function Tren({ tripId, onBack }) {
               </div>
             </div>
             <div className="nota">
-              {simulada ? "Valores de ejemplo para mostrar el panel; no describen el pronóstico de este tren." : (
-                <>Modelo entrenado con {prediccion.modelo?.n_train?.toLocaleString("es")} observaciones ·
-                MAE {prediccion.modelo?.mae_min} min · las predicciones son probabilísticas.</>
-              )}
+              Valores de ejemplo para mostrar el panel; no describen el pronóstico de este tren.
             </div>
           </div>
 
-          {simulada && <AvisoSimulacion />}
+          <AvisoSimulacion />
 
           <div className="card">
-            <div className="kicker" style={{ margin: "0 0 8px" }}>Estado previsto del viaje{simulada ? " · simulado" : ""}</div>
+            <div className="kicker" style={{ margin: "0 0 8px" }}>Estado previsto del viaje · simulado</div>
             <div style={{ marginBottom: 6 }}>
               <b style={{ textTransform: "capitalize" }}>{NIVEL_LABEL[prediccion.nivel_previsto]}</b>
               <span style={{ color: "var(--ink-2)" }}> — retraso final estimado {Math.round(prediccion.retraso_final_min)} min.</span>
             </div>
             <Escala nivel={prediccion.nivel_previsto} />
           </div>
-
-          {fuente === "terminal" && (
-            <div className="card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: "1.4rem" }} aria-hidden="true">🏁</span>
-              <div>
-                <b>Llegando a su destino</b>
-                <div style={{ color: "var(--ink-2)", fontSize: ".9rem" }}>
-                  {tren.proxima_parada} es la última parada del viaje.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {proximas.length > 0 && (
-            <>
-              <div className="kicker">Retraso previsto por estación</div>
-              <div className="card">
-                {proximas.map((e, idx) => (
-                  <div key={`${e.nombre}-${idx}`} className="linea-vida" style={{ alignItems: "center" }}>
-                    <span className={`op-dot d-${e.nivel}`} style={{ width: 11, height: 11 }} />
-                    <div style={{ flex: 1 }}>
-                      <b>{e.nombre}</b>
-                      {e.hora_prog && (
-                        <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: ".85rem", marginTop: 2 }}>
-                          <span style={{ color: "var(--ink-3)", textDecoration: "line-through" }}>{e.hora_prog}</span>
-                          <span style={{ color: "var(--ink-3)" }}> → </span>
-                          <b>{e.hora_prevista}</b>
-                        </div>
-                      )}
-                    </div>
-                    <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontWeight: 700, color: e.nivel === "normal" ? "var(--nv-normal)" : e.nivel === "leve" ? "var(--nv-leve)" : e.nivel === "moderado" ? "var(--nv-moderado)" : "var(--nv-grave)" }}>
-                      +{Math.round(e.retraso_previsto_min)} min
-                    </span>
-                  </div>
-                ))}
-                <div style={{ color: "var(--ink-3)", fontSize: ".75rem", marginTop: 10 }}>
-                  {fuente === "itinerario"
-                    ? "Estaciones restantes del itinerario real del viaje (GTFS); retraso interpolado entre el actual y la predicción final del modelo."
-                    : "Estimación aproximada por corredor de la línea (viaje sin itinerario en el GTFS vigente); retraso interpolado entre el actual y la predicción final."}
-                </div>
-              </div>
-            </>
-          )}
       </>
     </>
   );

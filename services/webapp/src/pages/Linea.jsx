@@ -70,36 +70,15 @@ export default function Linea({ linea, nucleo, lineas, onNav, onBack }) {
             <div className="tile"><div className={`v ${data.retraso_max_min < 8 ? "ok" : "bad"}`}>+{Math.round(data.retraso_max_min)}'</div><div className="k">Retraso máximo</div></div>
           </div>
 
-          {data.prediccion && (
-            <div className="pred-hero">
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontWeight: 800 }}>Predicción de la línea</span>
-                <span className="mini">MODELO · MAE {data.prediccion.mae_min} min</span>
-              </div>
-              <div style={{ display: "flex", gap: 28, marginTop: 10 }}>
-                <div><div className="mini">RETRASO FINAL MEDIO</div><div className="dato">+{Math.round(data.prediccion.retraso_final_medio_min)} min</div></div>
-                <div><div className="mini">PEOR TREN</div><div className="dato">+{Math.round(data.prediccion.retraso_final_max_min)} min</div></div>
-                <div><div className="mini">ALERTAS</div><div className="dato">{data.prediccion.n_alertas}</div></div>
-              </div>
-              <div className="nota">
-                Estado previsto: {NIVEL_LABEL[data.prediccion.nivel_previsto]}.
-                {data.prediccion.n_alertas > 0
-                  ? ` ${data.prediccion.n_alertas} trenes con alerta de retraso grave (confianza ≥ 90%).`
-                  : " Ningún tren con alerta de retraso grave ahora."}
-              </div>
-            </div>
-          )}
-
           <div className="kicker">Trenes en vía</div>
           {data.trenes.map((t) => (
             <div key={t.trip_id} className="card tap" onClick={() => onNav({ name: "tren", tripId: t.trip_id, from: { name: "linea", linea } })}>
               <div className="tren-row">
                 <div className="tren-hora">{t.llegada || "—:—"}<small>llegada est.</small></div>
                 <div className="tren-info">
-                  <div className="t1">{t.destino ? `a ${t.destino}` : "Tren en circulación"}{t.alerta ? " ⚠️" : ""}</div>
+                  <div className="t1">{t.destino ? `a ${t.destino}` : "Tren en circulación"}</div>
                   <div className="t2">
                     Próxima: {t.proxima_parada}
-                    {t.retraso_final_previsto_min != null ? ` · previsto al final +${Math.round(t.retraso_final_previsto_min)}'` : ""}
                   </div>
                 </div>
                 <RetrasoPill min={t.retraso_min} />

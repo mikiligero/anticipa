@@ -14,7 +14,7 @@ franja = read_gold("kpi_retraso_franja")
 punt = read_gold("kpi_puntualidad_linea")
 
 if franja.empty:
-    st.info("Aún no hay Gold histórico: ejecuta el DAG diario o `dbt build`.")
+    st.info("Aún no hay indicadores históricos. Genera los datos con `make dbt`.")
     st.stop()
 
 st.info(periodo_datos(franja) + " Indicadores históricos; no representan el estado en vivo.")

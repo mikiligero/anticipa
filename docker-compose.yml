@@ -5,13 +5,6 @@ x-logging: &logging
   options: {max-size: "10m", max-file: "3"}
 x-data: &data "./data:/data"
 x-token: &token ${API_TOKEN:?Ejecuta python3 scripts/init_project.py}
-x-airflow-env: &airflow-env
-  AIRFLOW__CORE__EXECUTOR: LocalExecutor
-  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/${POSTGRES_DB:-airflow}
-  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-  AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Madrid
-  AEMET_API_KEY: ${AEMET_API_KEY:-}
-  AEMET_MUNICIPIO: ${AEMET_MUNICIPIO:-28079}
 
 services:
   kafka:
@@ -42,7 +35,6 @@ services:
 
   ingestor:
     build: ./services/ingestor
-    labels: {autoheal: "true"}
     restart: unless-stopped
     logging: *logging
     environment:
@@ -65,19 +57,16 @@ services:
 
   api:
     build: ./services/api
-    labels: {autoheal: "true"}
     restart: unless-stopped
     logging: *logging
     ports: ["${API_BIND:-127.0.0.1}:${API_PORT:-18000}:8000"]
     environment:
       DATA_ROOT: /data
       API_TOKEN: *token
-      ALERT_CONFIDENCE_THRESHOLD: ${ALERT_CONFIDENCE_THRESHOLD:-0.90}
     volumes: [*data]
 
   webapp:
     build: ./services/webapp
-    labels: {autoheal: "true"}
     restart: unless-stopped
     logging: *logging
     ports: ["${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3000}:80"]
@@ -87,14 +76,11 @@ services:
 
   dashboard:
     build: ./services/dashboard
-    labels: {autoheal: "true"}
     restart: unless-stopped
     logging: *logging
     ports: ["${DASHBOARD_BIND:-0.0.0.0}:${DASHBOARD_PORT:-18501}:8501"]
     environment:
       DATA_ROOT: /data
-      API_URL: http://api:8000
-      API_TOKEN: *token
     volumes: [*data]
 
   dbt:
@@ -113,68 +99,7 @@ services:
     command: [bash]
     environment:
       DATA_ROOT: /data
-      AEMET_API_KEY: ${AEMET_API_KEY:-}
-      AEMET_MUNICIPIO: ${AEMET_MUNICIPIO:-28079}
     volumes: ["./scripts:/opt/scripts:ro", "./dbt:/opt/dbt", *data]
-
-  ml:
-    build: ./services/ml
-    profiles: [ml]
-    environment:
-      DATA_ROOT: /data
-      ALERT_DELAY_MINUTES: ${ALERT_DELAY_MINUTES:-10}
-      TRAIN_MAX_ROWS: ${TRAIN_MAX_ROWS:-1500000}
-    volumes: [*data]
-
-  postgres:
-    image: postgres:16-alpine
-    profiles: [orchestration]
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-airflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
-      POSTGRES_DB: ${POSTGRES_DB:-airflow}
-    volumes: ["postgres_data:/var/lib/postgresql/data"]
-    healthcheck:
-      test: [CMD-SHELL, "pg_isready -U ${POSTGRES_USER:-airflow}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  airflow:
-    build: ./airflow
-    profiles: [orchestration]
-    restart: unless-stopped
-    depends_on:
-      postgres: {condition: service_healthy}
-    ports: ["127.0.0.1:${AIRFLOW_PORT:-18080}:8080"]
-    environment: *airflow-env
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags:ro
-      - ./dbt:/opt/dbt
-      - ./scripts:/opt/scripts:ro
-      - ./services/ml/app:/opt/ml:ro
-      - *data
-    command:
-      - bash
-      - -ec
-      - |
-        airflow db migrate
-        airflow users create --username ${AIRFLOW_ADMIN_USER:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} --firstname Admin --lastname Cercanias --role Admin --email admin@example.com || true
-        airflow scheduler &
-        scheduler_pid=$$!
-        airflow webserver &
-        web_pid=$$!
-        trap 'kill $$scheduler_pid $$web_pid 2>/dev/null || true' EXIT INT TERM
-        wait -n $$scheduler_pid $$web_pid
-
-  autoheal:
-    image: willfarrell/autoheal:latest
-    profiles: [maintenance]
-    restart: unless-stopped
-    environment: {AUTOHEAL_CONTAINER_LABEL: autoheal}
-    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
 
 volumes:
   kafka_data:
-  postgres_data:

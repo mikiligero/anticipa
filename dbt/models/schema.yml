@@ -28,8 +28,3 @@ models:
     columns:
       - name: cobertura_pct
         tests: [not_null]
-
-  - name: features_modelo
-    columns:
-      - name: target_retraso_final_min
-        tests: [not_null]

@@ -15,16 +15,7 @@ Ajusta las direcciones de escucha y los puertos en `.env` según la red. Por def
 
 Las credenciales del operador están en `.secrets/access.txt`; nginx lee el hash de `.secrets/operator.htpasswd`. No se deben versionar. El inicializador conserva archivos existentes. Para migrar una instalación, conserva el token API y copia el hash actual a la nueva ruta privada antes de arrancar.
 
-## Migración desde la demo anterior
-
-1. Conservar `.env`, el directorio `data/`, el volumen Kafka existente y las credenciales privadas.
-2. Copiar `operator.htpasswd` a `.secrets/operator.htpasswd`, sin cambiar su contenido.
-3. Validar el Compose común con `config --quiet`.
-4. Reconstruir API, web y dashboard con el código actualizado.
-5. Usar el complemento LXC para conservar los límites de memoria. No usar el antiguo `compose.server.json`; sus copias locales quedan excluidas de Git.
-6. Verificar autenticación, viajero, operador, mapa, tendencias y Streamlit antes de retirar archivos obsoletos.
-
-No copiar ni modificar el proyecto alojado fuera de la carpeta del TFM. No borrar volúmenes ni checkpoints durante una limpieza de código.
+No copiar ni modificar el otro proyecto alojado fuera de la carpeta del TFM. Conservar los datos, las credenciales, los volúmenes y los checkpoints al actualizar.
 
 ## Actualizar las pantallas
 
@@ -37,4 +28,4 @@ Las actualizaciones forman parte de las imágenes. No requieren montajes de cód
 
 ## Alcance
 
-Captura, streaming, mapa y tendencias usan datos reales. Las predicciones de ejemplo llevan su aviso de simulación. Los archivos históricos de una instalación previa pueden conservarse como evidencia; una instalación nueva los genera al ejecutar dbt sobre su propio Bronze. Airflow y entrenamiento permanecen opcionales y no se activan con `make up`.
+Captura, streaming, mapa y tendencias usan datos reales. Las predicciones de ejemplo llevan su aviso de simulación. Los archivos históricos de una instalación previa pueden conservarse como evidencia; una instalación nueva los genera al ejecutar dbt sobre su propio Bronze. Esta versión solo contiene la demo; las predicciones se representan con valores de ejemplo identificados como simulados.

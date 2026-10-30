@@ -11,9 +11,7 @@ def initialize(root: Path):
     private.mkdir(mode=0o700, exist_ok=True)
     if not env.exists():
         content = (root / '.env.example').read_text()
-        values = {key:secrets.token_hex(24) for key in ('API_TOKEN','POSTGRES_PASSWORD','AIRFLOW_ADMIN_PASSWORD')}
-        for key,value in values.items():
-            content = content.replace(f'{key}=\n',f'{key}={value}\n')
+        content = content.replace('API_TOKEN=\n', f'API_TOKEN={secrets.token_hex(24)}\n')
         env.write_text(content)
         env.chmod(0o600)
     auth = private / 'operator.htpasswd'

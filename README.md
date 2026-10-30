@@ -16,7 +16,7 @@ La demo permite recorrer el flujo de datos y consultar sus resultados desde tres
 
 ### Aplicación de viajero
 
-Ofrece una vista de las líneas, los próximos trenes y los avisos del núcleo y la estación seleccionados. Permite guardar preferencias en el navegador, como el núcleo, la estación de referencia y la línea habitual. Cuando no hay un modelo publicado, el panel de predicción muestra un ejemplo con el aviso **PREDICCIÓN SIMULADA**.
+Ofrece una vista de las líneas, los próximos trenes y los avisos del núcleo y la estación seleccionados. Permite guardar preferencias en el navegador, como el núcleo, la estación de referencia y la línea habitual. El panel de predicción muestra valores de ejemplo con el aviso **PREDICCIÓN SIMULADA**.
 
 ### Centro de control del operador
 
@@ -25,7 +25,7 @@ Reúne la puntualidad, el retraso medio, los trenes activos, las incidencias y e
 - Un mapa con trazados GTFS, estaciones y posiciones recientes de los trenes. El fondo se muestra en blanco y gris para facilitar la lectura de las líneas.
 - Avisos con su texto completo. Se incluyen los que informan estaciones del núcleo seleccionado; el contador y el detalle utilizan el mismo filtro.
 - Tendencias de las últimas dos horas, agrupadas cada cinco minutos: retraso medio, percentil 90 y porcentaje de trenes puntuales. El percentil 90 ayuda a detectar retrasos altos que la media puede ocultar.
-- Predicciones de ejemplo identificadas como simuladas cuando no hay modelo publicado.
+- Predicciones de ejemplo identificadas como simuladas.
 
 El mapa aparece plegado. Al abrirlo, consulta las posiciones cada 30 segundos y oculta las de más de cinco minutos. Las tendencias se actualizan cada minuto y cuentan cada viaje una vez por intervalo. El criterio de puntualidad es un retraso inferior a cinco minutos.
 
@@ -39,7 +39,7 @@ El piloto implementa la captura de los feeds GTFS-Realtime de Renfe, la conserva
 
 Los datos en vivo dependen de lo que publica Renfe. La consulta cada 30 segundos no garantiza que la fuente haya publicado una posición nueva. Puede haber información ausente, antigua o sin correspondencia con el catálogo estático. Los avisos sin estaciones informadas quedan fuera del listado de incidencias de cada núcleo.
 
-La demo funciona sin entrenamiento y sin Airflow. Las predicciones simuladas contienen valores ficticios y muestran una nota que indica que las predicciones reales estarán disponibles tras entrenar el modelo. El código conserva módulos opcionales para entrenamiento, inferencia y orquestación; una instalación nueva no incluye modelos entrenados.
+Esta versión contiene únicamente los componentes de la demo. Las predicciones son ejemplos fijos y contienen valores ficticios. No se entrenan modelos ni se ejecuta inferencia; el aviso explica que las predicciones reales requerirían incorporar y entrenar un modelo.
 
 El despliegue está preparado para una demostración en una red de confianza y puede ejecutarse en un LXC compartido con límites de recursos. El acceso del operador requiere usuario y contraseña. Los datos, las credenciales y las copias locales se mantienen fuera del repositorio.
 
@@ -52,13 +52,11 @@ El despliegue está preparado para una demostración en una red de confianza y p
 | Apache Kafka | Transporte de las observaciones hacia el procesamiento continuo. |
 | Spark Structured Streaming | Procesamiento en microbatches y mantenimiento del último estado por viaje y vehículo. |
 | DuckDB y dbt | Consultas analíticas, transformaciones SQL, dimensiones, indicadores y pruebas de datos. |
-| FastAPI | API para las pantallas, los mapas, las tendencias y la consulta del estado del sistema. |
+| FastAPI | API para viajero, operador, mapas, tendencias y estado del sistema. |
 | React y Vite | Interfaz de viajero y centro de control. |
 | Leaflet y OpenStreetMap | Visualización cartográfica de trazados, estaciones y trenes. |
 | Streamlit y Altair | Dashboard interno de histórico y calidad. |
 | Docker Compose y nginx | Despliegue de servicios, publicación de la web y autenticación del operador. |
-| LightGBM y scikit-learn, opcionales | Entrenamiento de modelos de retraso y clasificación de alertas. |
-| Airflow y PostgreSQL, opcionales | Planificación de tareas y almacenamiento de los metadatos de la orquestación. |
 
 ## Arquitectura y recorrido del dato
 
@@ -85,22 +83,17 @@ flowchart TD
     GOLD --> API
     GEOM --> API
     API --> WEB[React: viajero y operador]
-    API --> DASH[Streamlit: dashboard interno]
-    GOLD --> DASH
-
-    GOLD -.-> ML[Entrenamiento opcional]
-    ML -.-> MODELS[Artefactos del modelo]
-    MODELS -.-> API
+    GOLD --> DASH[Streamlit: dashboard interno]
 ```
 
 1. **Captura y conservación.** El capturador consulta los feeds, omite snapshots repetidos según su marca temporal y guarda tanto el mensaje original como las filas extraídas. Publica las observaciones en Kafka para el procesamiento continuo.
 2. **Estado en vivo.** Spark consume las actualizaciones de viaje y las posiciones en microbatches de 30 segundos. Mantiene el último estado disponible, lo enriquece con dimensiones y escribe los archivos de consulta de forma atómica.
-3. **Análisis histórico.** dbt y DuckDB transforman los registros Bronze en capas Silver y Gold. Se construyen dimensiones, indicadores de puntualidad, retrasos, cobertura e ingesta y, si se necesita, variables para entrenamiento.
-4. **Consulta y visualización.** FastAPI sirve el estado en vivo, los datos del mapa y los resultados analíticos. Los avisos y las tendencias recientes se calculan desde Bronze. React presenta las vistas de viajero y operador; Streamlit consulta la API y los indicadores históricos de Gold.
+3. **Análisis histórico.** dbt y DuckDB transforman los registros Bronze en capas Silver y Gold. Se construyen dimensiones e indicadores de puntualidad, retrasos, cobertura e ingesta.
+4. **Consulta y visualización.** FastAPI sirve el estado en vivo, los datos del mapa y los resultados analíticos. Los avisos y las tendencias recientes se calculan desde Bronze. React presenta las vistas de viajero y operador; Streamlit consulta los archivos Gold del estado en vivo y de los indicadores históricos.
 
 Por ejemplo, una actualización de viaje con retraso se conserva en su mensaje original y en Bronze, pasa por Kafka y Spark y termina en el estado consultado por el operador. Ese mismo registro puede contribuir después a los indicadores históricos mediante dbt. Los archivos originales permiten volver a revisar la información recibida.
 
-Airflow puede programar las tareas por lotes cuando se activa su perfil. Los trazados del mapa se preparan a partir de `shapes.txt` y de los viajes y paradas de la misma versión GTFS, y se distribuyen por núcleo.
+Los trazados del mapa se preparan a partir de `shapes.txt` y de los viajes y paradas de la misma versión GTFS, y se distribuyen por núcleo.
 
 ## Arranque desde una copia nueva
 
@@ -117,7 +110,7 @@ make up
 
 `make bootstrap` descarga el GTFS completo y los catálogos de núcleos, genera el mapa directamente desde el ZIP oficial y construye únicamente las dimensiones de dbt. No necesita histórico Bronze previo ni entrena modelos. La geometría y los identificadores proceden de la misma versión GTFS. Si Renfe no publica un archivo requerido, la preparación termina con error en vez de inventar datos.
 
-Las pantallas inicialmente mostrarán datos en cuanto lleguen los primeros eventos. Un inicio desde cero no incluye datos históricos ni modelos entrenados. Las tendencias dejan huecos hasta que haya observaciones reales.
+Las pantallas inicialmente mostrarán datos en cuanto lleguen los primeros eventos. Un inicio desde cero no incluye datos históricos. Las tendencias dejan huecos hasta que haya observaciones reales.
 
 | Pantalla | Dirección por defecto |
 |---|---|
@@ -139,7 +132,7 @@ make COMPOSE="docker compose -f docker-compose.yml -f deploy/lxc/compose.yml" up
 
 Consulta [la guía de despliegue](deploy/lxc/LEEME.md). No hay un Compose privado con secretos que sea necesario copiar al repositorio.
 
-## Herramientas y módulos opcionales
+## Operación de la demo
 
 ```sh
 make gtfs               # Nueva versión GTFS, incluido shapes cuando existe
@@ -147,15 +140,10 @@ make nucleos            # Catálogo estación → núcleo
 make mapa               # Regenera el mapa desde el último ZIP descargado
 make dbt                # Reconstruye histórico Silver/Gold cuando exista Bronze
 make dbt-test
-make train              # Entrenamiento manual; perfil ml, mínimo 3 días
-make airflow            # Perfil orchestration: Postgres y Airflow
-make aemet              # Captura meteorológica opcional
 make ps
 make logs
 make down               # Conserva datos y volúmenes
 ```
-
-ML, Airflow, Postgres y autoheal no arrancan en la demo por defecto. Se conservan como módulos funcionales del TFM. El entrenamiento guarda sus artefactos en `data/models`; la inferencia de viajero y operador comparte la misma preparación de variables. AEMET todavía no alimenta esas variables.
 
 Los indicadores históricos originales agrupan por código de línea sin núcleo y no deben presentarse como comparación entre ciudades. Las tendencias nuevas calculan el núcleo por la estación de cada viaje.
 
@@ -180,17 +168,16 @@ npm run dev
 
 El proxy de desarrollo envía `/api` y `/api-op` al nginx de la aplicación. Conserva la autenticación del operador. Su destino predeterminado es `http://127.0.0.1:3000`; puede cambiarse con `DEV_PROXY_TARGET` en el entorno del proceso Vite. Las dependencias web se fijan mediante `package-lock.json` y se instalan con `npm ci`.
 
-Las pruebas Python cubren aislamiento por núcleo, caducidad de posiciones, tendencias, inferencia compartida, generación idempotente de credenciales y construcción del mapa sin archivos intermedios manuales. Las comprobaciones de navegador deben incluir abrir/cerrar el mapa, cambio de núcleo y varios refrescos para evitar la regresión de tarjetas duplicadas.
+Las pruebas Python cubren aislamiento por núcleo, caducidad de posiciones, tendencias, autenticación, consultas de la demo, generación idempotente de credenciales y construcción del mapa sin archivos intermedios manuales. Las comprobaciones de navegador deben incluir abrir/cerrar el mapa, cambio de núcleo y varios refrescos para evitar la regresión de tarjetas duplicadas.
 
 ## Estructura y datos
 
 - `services/ingestor`, `services/stream`: captura y procesamiento en vivo.
-- `services/api`: API, inferencia compartida, mapa y tendencias.
+- `services/api`: API de la demo, mapa y tendencias.
 - `services/webapp`: viajero y operador.
 - `services/dashboard`: Streamlit e histórico.
 - `dbt`: modelos Silver/Gold, dimensiones y tests.
-- `scripts`: inicialización, descarga, mapa, compactación e importación.
-- `services/ml`, `airflow`: módulos opcionales.
+- `scripts`: inicialización, descarga de catálogos, preparación del mapa y pruebas.
 - `data/`: datos y artefactos locales, excluidos del repositorio.
 - `.secrets/`: credenciales locales, excluidas del repositorio.
 

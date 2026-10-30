@@ -104,7 +104,6 @@ class Dimensions:
 
 DIMS = Dimensions()
 _STATE: dict[str, dict[str, pd.DataFrame]] = {"tu": {}, "vp": {}}
-_FIRST_SEEN: dict[str, int] = {}  # trip_id → primer snapshot_ts observado
 
 
 def _atomic_write(df: pd.DataFrame, path: Path) -> None:
@@ -179,17 +178,6 @@ def process_tu(batch_df, batch_id: int) -> None:
     df = df.copy()
     df["trip_id"] = df["trip_id"].str.strip()
     df["arrival_delay_min"] = (df["arrival_delay"] / 60.0).round(2)
-    # primer avistamiento de cada viaje (feature min_desde_inicio del modelo)
-    for tid, ts in zip(df["trip_id"], df["snapshot_ts"]):
-        _FIRST_SEEN.setdefault(tid, int(ts))
-    activos = set(df["trip_id"])
-    for tid in list(_FIRST_SEEN):
-        if tid not in activos:
-            _FIRST_SEEN.pop(tid)
-    df["min_desde_inicio"] = df.apply(
-        lambda r: round((r["snapshot_ts"] - _FIRST_SEEN.get(r["trip_id"], r["snapshot_ts"])) / 60.0, 1),
-        axis=1,
-    )
     if DIMS.lineas is not None:
         df = df.merge(DIMS.lineas, on="trip_id", how="left")
     df = _enrich_linea(df)

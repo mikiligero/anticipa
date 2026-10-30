@@ -22,7 +22,7 @@ log = logging.getLogger("gtfs")
 GTFS_URL = "https://ssl.renfe.com/ftransit/Fichero_CER_FOMENTO/fomento_transit.zip"
 # stop_times es pesado (~250 MB CSV) pero imprescindible: es la única fuente
 # del destino final de cada viaje (trip_headsign viene vacío en Renfe)
-BASE_FILES = ["trips", "routes", "stops", "calendar", "stop_times"]
+BASE_FILES = ["trips", "routes", "stops", "stop_times"]
 
 
 def main() -> None:

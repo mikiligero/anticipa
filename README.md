@@ -1,5 +1,7 @@
 # Anticipa · Piloto de datos de Cercanías
 
+<img src="services/webapp/public/logo.svg" alt="Logo de Anticipa" width="112" height="112">
+
 Este repositorio contiene el código del piloto desarrollado como parte del **Trabajo Fin de Máster (TFM) del proyecto Anticipa: Plataforma de Monitorización de la Red de Cercanías**. Incluye la captura, conservación y análisis de información de Cercanías Renfe y un cuadro de mando para revisar el estado publicado por Renfe y demostrar cómo una observación pasa del mensaje original al indicador.
 
 ## Integrantes del proyecto
@@ -31,7 +33,7 @@ El mapa aparece plegado. Al abrirlo, consulta las posiciones cada 30 segundos y 
 
 ### Dashboard interno
 
-El dashboard de Streamlit permite consultar indicadores históricos y de calidad de los datos. Cada vista histórica informa del periodo disponible.
+El dashboard de Streamlit permite consultar el estado en vivo, las posiciones y los mayores retrasos, además de indicadores históricos y de calidad de los datos. Lee directamente los archivos Parquet compartidos. Cada vista histórica informa del periodo disponible.
 
 ## Alcance del piloto
 
@@ -52,6 +54,7 @@ El despliegue está preparado para una demostración en una red de confianza y p
 | Apache Kafka | Transporte de las observaciones hacia el procesamiento continuo. |
 | Spark Structured Streaming | Procesamiento en microbatches y mantenimiento del último estado por viaje y vehículo. |
 | DuckDB y dbt | Consultas analíticas, transformaciones SQL, dimensiones, indicadores y pruebas de datos. |
+| SQLite | Copia local de los resúmenes de tendencias calculados por la API. |
 | FastAPI | API para viajero, operador, mapas, tendencias y estado del sistema. |
 | React y Vite | Interfaz de viajero y centro de control. |
 | Leaflet y OpenStreetMap | Visualización cartográfica de trazados, estaciones y trenes. |
@@ -60,40 +63,59 @@ El despliegue está preparado para una demostración en una red de confianza y p
 
 ## Arquitectura y recorrido del dato
 
-La arquitectura combina una ruta de procesamiento continuo para las pantallas en vivo con una ruta por lotes para el análisis histórico.
+La arquitectura combina procesamiento continuo para el estado en vivo con transformaciones por lotes para las dimensiones y los indicadores históricos. Los servicios comparten el directorio `data/`; la API, Spark y Streamlit leen archivos Parquet. DuckDB ejecuta las consultas y transformaciones; no hay un servidor de base de datos entre la API y esos archivos.
 
 ```mermaid
 flowchart TD
-    RT[Renfe GTFS-Realtime] --> ING[Capturador Python]
-    ING --> RAW[Raw: mensajes Protobuf originales]
-    ING --> BRONZE[Bronze: registros Parquet]
-    ING --> KAFKA[Kafka]
-    KAFKA --> SPARK[Spark Structured Streaming]
-    SPARK --> LIVE[Gold: estado en vivo y posiciones]
+    RT["Renfe GTFS-Realtime"] --> ING["Capturador Python"]
+    ING --> RAW["Raw: originales Protobuf"]
+    ING --> BRONZE["Bronze: registros Parquet"]
+    ING --> KAFKA["Kafka"]
+    KAFKA -->|Posiciones y actualizaciones de viaje| SPARK["Spark Structured Streaming"]
+    SPARK --> LIVE["Gold realtime: estado y posiciones"]
 
-    STATIC[GTFS estático y catálogo de núcleos] --> DBT[dbt y DuckDB]
-    BRONZE --> DBT
-    DBT --> SILVER[Silver: datos depurados y reconciliados]
-    SILVER --> GOLD[Gold: dimensiones e indicadores]
-    GOLD --> SPARK
-    STATIC --> GEOM[Preparación de trazados del mapa]
+    GTFS["GTFS estático versionado"] --> DIMS
+    GTFS --> SILVER
+    BRONZE --> SILVER
+    BRONZE -->|Métricas de ingesta| KPIS
+    subgraph BATCH["Transformaciones manuales con dbt y DuckDB"]
+        DIMS["Gold: dimensiones GTFS"]
+        SILVER["Staging y Silver: normalización y reconciliación"]
+        KPIS["Gold: indicadores históricos"]
+        SILVER --> KPIS
+    end
+    DIMS -->|Líneas y estaciones| SPARK
+    DIMS --> API["FastAPI"]
+    LIVE --> API
+    LIVE --> DASH["Streamlit: dashboard interno"]
+    KPIS --> DASH
+    KPIS --> API
+    BRONZE -->|Avisos y tendencias recientes| API
 
-    LIVE --> API[FastAPI]
-    BRONZE --> API
-    GOLD --> API
-    GEOM --> API
-    API --> WEB[React: viajero y operador]
-    GOLD --> DASH[Streamlit: dashboard interno]
+    NUCLEOS["Catálogo de estaciones por núcleo"] --> API
+    GTFS --> GEOM["Preparación del mapa por núcleo"]
+    NUCLEOS --> GEOM
+    GEOM --> RED["Trazados y estaciones: redes.json"]
+    RED --> API
+    API -->|Guarda resúmenes de tendencias| SQLITE["SQLite local"]
+
+    API -->|JSON mediante proxy| NGINX["nginx: web y acceso del operador"]
+    NGINX --> WEB["React: viajero y operador"]
+    OSM["OpenStreetMap"] -->|Fondo cartográfico| WEB
+    DEMO["Predicciones simuladas: valores fijos"] --> WEB
 ```
 
-1. **Captura y conservación.** El capturador consulta los feeds, omite snapshots repetidos según su marca temporal y guarda tanto el mensaje original como las filas extraídas. Publica las observaciones en Kafka para el procesamiento continuo.
-2. **Estado en vivo.** Spark consume las actualizaciones de viaje y las posiciones en microbatches de 30 segundos. Mantiene el último estado disponible, lo enriquece con dimensiones y escribe los archivos de consulta de forma atómica.
-3. **Análisis histórico.** dbt y DuckDB transforman los registros Bronze en capas Silver y Gold. Se construyen dimensiones e indicadores de puntualidad, retrasos, cobertura e ingesta.
-4. **Consulta y visualización.** FastAPI sirve el estado en vivo, los datos del mapa y los resultados analíticos. Los avisos y las tendencias recientes se calculan desde Bronze. React presenta las vistas de viajero y operador; Streamlit consulta los archivos Gold del estado en vivo y de los indicadores históricos.
+1. **Captura y conservación.** El capturador consulta posiciones, actualizaciones de viaje y avisos. Omite snapshots repetidos según su marca temporal, conserva los originales y escribe las filas extraídas en Bronze antes de intentar publicarlas en Kafka. La captura puede continuar si falla la publicación en Kafka; el estado en vivo depende de que los mensajes lleguen a Spark.
+2. **Estado en vivo.** Spark consume únicamente las actualizaciones de viaje y las posiciones, en microbatches de 30 segundos. Enriquece el estado de los viajes con las dimensiones de líneas y estaciones y escribe `data/gold/realtime/estado_red.parquet` y `posiciones.parquet` de forma atómica. Los avisos se consultan desde Bronze, sin pasar por Spark.
+3. **Preparación y análisis por lotes.** `make bootstrap` descarga catálogos y prepara las dimensiones GTFS y el mapa sin necesitar histórico Bronze. Después, `make dbt` genera las tablas Silver y los indicadores históricos a partir de las capturas. Estas tareas se ejecutan manualmente; no hay un planificador que actualice automáticamente el histórico.
+4. **Consulta y visualización.** FastAPI combina el estado en vivo, las dimensiones, los catálogos de núcleo y la geometría del mapa. Lee los avisos de Bronze y calcula desde esa capa las tendencias de las últimas dos horas, con caché de 60 segundos; guarda además una copia de los resúmenes en SQLite. React consulta la API a través de nginx. Streamlit lee directamente los Parquet del estado en vivo y los indicadores históricos, sin pasar por la API.
+5. **Mapa y simulación.** Leaflet dibuja las geometrías y los trenes que entrega la API sobre un fondo de OpenStreetMap. El catálogo de estaciones permite limitar la información al núcleo seleccionado. Los paneles de predicción utilizan constantes de la interfaz y llevan su aviso de simulación; no hay un modelo ni una llamada a inferencia.
 
 Por ejemplo, una actualización de viaje con retraso se conserva en su mensaje original y en Bronze, pasa por Kafka y Spark y termina en el estado consultado por el operador. Ese mismo registro puede contribuir después a los indicadores históricos mediante dbt. Los archivos originales permiten volver a revisar la información recibida.
 
 Los trazados del mapa se preparan a partir de `shapes.txt` y de los viajes y paradas de la misma versión GTFS, y se distribuyen por núcleo.
+
+nginx solicita usuario y contraseña para el operador e incorpora el token al reenviar sus consultas a la API. Las credenciales no se incluyen en el código de React. Streamlit se publica por separado en el puerto 18501; la contraseña del operador no protege ese puerto.
 
 ## Arranque desde una copia nueva
 

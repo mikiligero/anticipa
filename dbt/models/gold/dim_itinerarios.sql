@@ -1,6 +1,6 @@
 -- Itinerario completo y ordenado de cada viaje (stop_times, última versión
--- GTFS que conoce el trip). Lo consulta la API para mostrar las estaciones
--- restantes reales de un tren (con filtro por trip_id: predicate pushdown).
+-- GTFS que conoce el trip). La API relaciona sus estaciones con el catálogo
+-- de núcleos para obtener los nombres de línea de cada ciudad.
 with st as (
     select
         version,

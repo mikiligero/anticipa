@@ -17,7 +17,7 @@ models:
       +materialized: table
     gold:
       # Materialización externa de dbt-duckdb: cada modelo se escribe como
-      # Parquet en /data/gold/<modelo>.parquet (lo consumen API, dashboard,
-      # streaming y ML sin tocar el warehouse).
+      # Parquet en /data/gold/<modelo>.parquet. API, dashboard y streaming
+      # consumen esos archivos sin consultar el warehouse.
       +materialized: external
       +format: parquet

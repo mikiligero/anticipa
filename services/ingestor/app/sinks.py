@@ -2,8 +2,7 @@
 
 Principio de diseño (Sprint 2, capa Bronze): el dato bruto se persiste
 SIEMPRE antes de cualquier otra cosa. Kafka es best-effort: si el broker
-no está disponible, la captura no se detiene (el streaming puede
-reconstruirse después desde Bronze).
+no está disponible, la captura continúa conservando los datos en Bronze.
 """
 from __future__ import annotations
 
@@ -114,7 +113,7 @@ def _json_default(obj):
 
 
 class Health:
-    """Fichero de salud para el healthcheck de Docker y el watchdog de Airflow."""
+    """Fichero de salud que consulta el healthcheck de Docker."""
 
     def __init__(self, path: Path):
         self.path = path

@@ -4,8 +4,7 @@ cercanias:
     prod:
       type: duckdb
       path: "{{ env_var('DUCKDB_PATH', '/data/warehouse/cercanias.duckdb') }}"
-      # 1 hilo: la VM de Docker comparte ~4 GB con Kafka/Spark/Airflow y dos
-      # modelos pesados en paralelo agotan la memoria del host
+      # Un hilo limita el consumo al compartir recursos con Kafka y Spark.
       threads: 1
       external_root: "{{ env_var('GOLD_ROOT', '/data/gold') }}"
       settings:
